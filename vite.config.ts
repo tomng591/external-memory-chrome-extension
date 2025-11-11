@@ -2,9 +2,40 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
+import fs from 'fs';
+
+// Plugin to copy public files (manifest, icons, etc) to dist
+const copyPublicPlugin = () => {
+  return {
+    name: 'copy-public-files',
+    writeBundle() {
+      // Copy manifest.json
+      const manifestSrc = path.resolve(__dirname, 'public/manifest.json');
+      const manifestDest = path.resolve(__dirname, 'dist/manifest.json');
+      if (fs.existsSync(manifestSrc)) {
+        fs.copyFileSync(manifestSrc, manifestDest);
+      }
+
+      // Copy icons
+      const iconsSrc = path.resolve(__dirname, 'public/icons');
+      const iconsDest = path.resolve(__dirname, 'dist/icons');
+      if (fs.existsSync(iconsSrc)) {
+        if (!fs.existsSync(iconsDest)) {
+          fs.mkdirSync(iconsDest, { recursive: true });
+        }
+        fs.readdirSync(iconsSrc).forEach(file => {
+          fs.copyFileSync(
+            path.join(iconsSrc, file),
+            path.join(iconsDest, file)
+          );
+        });
+      }
+    },
+  };
+};
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), copyPublicPlugin()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
