@@ -29,6 +29,17 @@
       "run_at": "document_start"
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "injected.js"
+      ],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://claude.ai/*"
+      ]
+    }
+  ],
   "background": {
     "service_worker": "background.js"
   }

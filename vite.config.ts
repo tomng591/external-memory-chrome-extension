@@ -55,6 +55,7 @@ export default defineConfig({
         main: path.resolve(__dirname, 'index.html'),
         popup: path.resolve(__dirname, 'public/popup.html'),
         content: path.resolve(__dirname, 'src/content/index.ts'),
+        injected: path.resolve(__dirname, 'src/content/injected.ts'),
         background: path.resolve(__dirname, 'src/background.ts'),
       },
       output: {

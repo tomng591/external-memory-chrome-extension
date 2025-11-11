@@ -113,131 +113,141 @@ try {
   console.log('[External Memory]', message);
   console.log('[External Memory] Extension initialized and ready to capture conversations');
 
-  // Expose parser functions to window object for console testing
-  // Usage in Chrome console: window.__externalMemory.parseMessages()
-  const externalMemory = {
-    /**
-     * Detect the current platform (ChatGPT or Claude)
-     * @returns 'chatgpt' | 'claude' | null
-     */
-    detectPlatform: () => {
-      const platform = detectPlatform();
-      console.log(`[External Memory] Detected platform: ${platform}`);
-      return platform;
-    },
+  /**
+   * Listen for requests from the injected script (MAIN world)
+   * and send responses back via custom events
+   */
+  document.addEventListener('__external_memory_request', async (event: any) => {
+    const { id, action, payload } = event.detail;
 
-    /**
-     * Extract messages from the current page
-     * @returns Array of extracted CapturedMessage objects
-     */
-    extractMessages: () => {
-      const messages = extractMessages();
-      console.log(
-        `%c[External Memory] Extracted ${messages.length} messages`,
-        'color: #4CAF50; font-weight: bold;'
-      );
-      return messages;
-    },
+    try {
+      let result: any;
 
-    /**
-     * Send messages to service worker
-     * @param messages - Optional: array of messages to send (default: extract current page)
-     */
-    sendMessages: async (messages?: CapturedMessage[]) => {
-      const messagesToSend = messages || extractMessages();
-      await sendMessages(messagesToSend);
-      console.log(`[External Memory] Sent ${messagesToSend.length} messages`);
-    },
+      switch (action) {
+        case 'detect_platform':
+          result = detectPlatform();
+          break;
 
-    /**
-     * Parse all messages from the current page
-     * @returns Array of parsed messages
-     */
-    parseMessages: () => {
-      const messages = extractMessages();
-      console.log(
-        `%c[External Memory] Parsed ${messages.length} messages`,
-        'color: #4CAF50; font-weight: bold;'
-      );
-      return messages;
-    },
+        case 'extract_messages':
+          result = extractMessages();
+          break;
 
-    /**
-     * Get debug information about parsed messages
-     * @returns Debug info string
-     */
-    getDebugInfo: () => {
-      return getParserDebugInfo();
-    },
+        case 'parse_messages':
+          result = extractMessages();
+          break;
 
-    /**
-     * Parse and pretty-print messages in console
-     * @returns Array of parsed messages (same as parseMessages but with formatted output)
-     */
-    testParser: () => {
-      const messages = extractMessages();
-      const platform = detectPlatform();
-      console.log(
-        `%c╔════════════════════════════════════════════════════════════╗
+        case 'send_messages':
+          const messagesToSend = payload?.messages || extractMessages();
+          await sendMessages(messagesToSend);
+          result = { count: messagesToSend.length };
+          break;
+
+        case 'get_debug_info':
+          result = getParserDebugInfo();
+          break;
+
+        case 'get_storage_stats':
+          result = await getStorageStats();
+          break;
+
+        case 'test_parser':
+          const testMessages = extractMessages();
+          const testPlatform = detectPlatform();
+          console.log(
+            `%c╔════════════════════════════════════════════════════════════╗
 ║        External Memory - Message Parser Test Results        ║
 ╚════════════════════════════════════════════════════════════╝`,
-        'color: #2196F3; font-family: monospace;'
-      );
-      console.log(`%cPlatform: ${platform}`, 'color: #666;');
-      console.log(`%cConversation URL: ${window.location.href}`, 'color: #666;');
-      console.log(`%cMessages Found: ${messages.length}`, 'color: #666;');
-      console.log('');
+            'color: #2196F3; font-family: monospace;'
+          );
+          console.log(`%cPlatform: ${testPlatform}`, 'color: #666;');
+          console.log(`%cConversation URL: ${window.location.href}`, 'color: #666;');
+          console.log(`%cMessages Found: ${testMessages.length}`, 'color: #666;');
+          console.log('');
 
-      if (messages.length === 0) {
-        console.log(
-          '%cℹ️  No messages found. Make sure you have an active conversation.',
-          'color: #FF9800;'
-        );
-      } else {
-        console.log(
-          `%c${messages.length} Message${messages.length !== 1 ? 's' : ''} extracted:`,
-          'color: #4CAF50; font-weight: bold;'
-        );
-        console.table(
-          messages.map(msg => ({
-            Index: msg.messageIndex || '-',
-            Role: msg.role.toUpperCase(),
-            Content: msg.content.substring(0, 60) + (msg.content.length > 60 ? '...' : ''),
-            ID: msg.id.substring(0, 12) + '...',
-            Timestamp: new Date(msg.timestamp).toLocaleTimeString(),
-          }))
-        );
+          if (testMessages.length === 0) {
+            console.log(
+              '%cℹ️  No messages found. Make sure you have an active conversation.',
+              'color: #FF9800;'
+            );
+          } else {
+            console.log(
+              `%c${testMessages.length} Message${testMessages.length !== 1 ? 's' : ''} extracted:`,
+              'color: #4CAF50; font-weight: bold;'
+            );
+            console.table(
+              testMessages.map(msg => ({
+                Index: msg.messageIndex || '-',
+                Role: msg.role.toUpperCase(),
+                Content: msg.content.substring(0, 60) + (msg.content.length > 60 ? '...' : ''),
+                ID: msg.id.substring(0, 12) + '...',
+                Timestamp: new Date(msg.timestamp).toLocaleTimeString(),
+              }))
+            );
+          }
+
+          console.log('');
+          console.log(
+            '%cFull message objects available:',
+            'color: #9C27B0; font-style: italic;'
+          );
+          console.log('Copy and paste to console: copy(__externalMemory.parseMessages())');
+          result = testMessages;
+          break;
+
+        default:
+          throw new Error(`Unknown action: ${action}`);
       }
 
-      console.log('');
-      console.log(
-        '%cFull message objects available:',
-        'color: #9C27B0; font-style: italic;'
+      // Send successful response back to injected script
+      document.dispatchEvent(
+        new CustomEvent('__external_memory_response', {
+          detail: { id, success: true, data: result },
+        })
       );
-      console.log('Copy and paste to console: copy(__externalMemory.parseMessages())');
+    } catch (error) {
+      // Send error response back to injected script
+      document.dispatchEvent(
+        new CustomEvent('__external_memory_response', {
+          detail: {
+            id,
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        })
+      );
+    }
+  });
 
-      return messages;
-    },
-  };
+  /**
+   * Helper function to get storage stats from service worker
+   */
+  function getStorageStats(): Promise<any> {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage(
+          { type: 'get_storage_stats' },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+              return;
+            }
 
-  // Attach to window object for console access
-  (window as any).__externalMemory = externalMemory;
+            if (response?.received && response?.data) {
+              resolve(response.data);
+            } else {
+              reject(new Error(response?.error || 'Failed to get storage stats'));
+            }
+          }
+        );
 
-  console.log(
-    '%c✅ Message capture available in console! Try these commands:',
-    'color: #4CAF50; font-weight: bold;'
-  );
-  console.log('  • window.__externalMemory.detectPlatform()  // Show detected platform');
-  console.log('  • window.__externalMemory.extractMessages() // Extract messages');
-  console.log('  • window.__externalMemory.parseMessages()   // Get message array');
-  console.log('  • window.__externalMemory.sendMessages()    // Send to service worker');
-  console.log('  • window.__externalMemory.testParser()      // Pretty-printed results');
-  console.log('  • window.__externalMemory.getDebugInfo()    // Debug information');
-  console.log('');
-  console.log(
-    '%c💡 Tip: If __externalMemory is undefined, reload this page (Ctrl+R / Cmd+R)',
-    'color: #FF9800; font-style: italic;'
-  );
+        setTimeout(() => {
+          reject(new Error('Storage stats request timeout'));
+        }, 5000);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
 
   // Auto-capture and send messages on page load (when DOM is ready)
   if (document.readyState === 'loading') {
@@ -263,6 +273,22 @@ try {
         console.error('[External Memory] Error auto-sending messages:', error);
       });
     }
+  }
+
+  // Inject the injected script into the page (MAIN world)
+  try {
+    const script = document.createElement('script');
+    script.src = chrome.runtime.getURL('injected.js');
+    script.type = 'module';
+    script.onload = () => {
+      console.log('[External Memory] Injected script loaded successfully');
+    };
+    script.onerror = () => {
+      console.error('[External Memory] Failed to load injected script');
+    };
+    document.documentElement.appendChild(script);
+  } catch (error) {
+    console.error('[External Memory] Error injecting script:', error);
   }
 
   // Send test message to service worker
