@@ -18,8 +18,25 @@ try {
         console.log('[External Memory] Message type:', message?.type);
         console.log('[External Memory] Message payload:', message);
 
+        // Handle captured messages from content script
+        if (message?.type === 'capture_messages') {
+          console.log(
+            `[External Memory] Processing capture_messages: ${message?.data?.length || 0} messages from ${message?.platform}`
+          );
+
+          const response = {
+            type: 'capture_messages_response',
+            data: 'Messages received and processed',
+            timestamp: Date.now(),
+            received: true,
+            messageCount: message?.data?.length || 0,
+          };
+
+          console.log('[External Memory] Sending response back to content script:', response);
+          sendResponse(response);
+        }
         // Handle test message
-        if (message?.type === 'test') {
+        else if (message?.type === 'test') {
           console.log('[External Memory] Processing test message');
 
           const response = {
@@ -33,6 +50,7 @@ try {
           sendResponse(response);
         } else {
           // Default response for unknown message types
+          console.log('[External Memory] Received unknown message type, sending default response');
           sendResponse({
             received: true,
             timestamp: Date.now(),

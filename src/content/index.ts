@@ -6,6 +6,105 @@
  */
 
 import { parseMessages as chatgptParseMessages, getParserDebugInfo } from './parsers/chatgptParser';
+import { parseMessages as claudeParseMessages } from './parsers/claudeParser';
+import { CapturedMessage } from '../types/Message';
+
+/**
+ * Detects which platform (ChatGPT or Claude) the content script is running on
+ * based on the current page URL.
+ *
+ * @returns 'chatgpt' | 'claude' | null if platform cannot be determined
+ */
+export function detectPlatform(): 'chatgpt' | 'claude' | null {
+  const url = window.location.href;
+
+  if (url.includes('chatgpt.com')) {
+    return 'chatgpt';
+  }
+
+  if (url.includes('claude.ai')) {
+    return 'claude';
+  }
+
+  return null;
+}
+
+/**
+ * Extracts messages from the current page using the appropriate parser
+ * based on the detected platform.
+ *
+ * @returns Array of CapturedMessage objects extracted from the current conversation
+ */
+export function extractMessages(): CapturedMessage[] {
+  const platform = detectPlatform();
+
+  if (platform === 'chatgpt') {
+    return chatgptParseMessages();
+  }
+
+  if (platform === 'claude') {
+    return claudeParseMessages();
+  }
+
+  console.warn('[External Memory] Unable to detect platform for message extraction');
+  return [];
+}
+
+/**
+ * Sends extracted messages to the service worker via chrome.runtime.sendMessage.
+ * Messages are sent in batches to avoid overwhelming the service worker.
+ *
+ * @param messages - Array of CapturedMessage objects to send
+ * @param batchSize - Number of messages per batch (default: 10)
+ */
+export async function sendMessages(
+  messages: CapturedMessage[],
+  batchSize: number = 10
+): Promise<void> {
+  if (messages.length === 0) {
+    console.log('[External Memory] No messages to send');
+    return;
+  }
+
+  const platform = detectPlatform();
+  console.log(
+    `[External Memory] Sending ${messages.length} messages from ${platform} to service worker`
+  );
+
+  // Send messages in batches
+  for (let i = 0; i < messages.length; i += batchSize) {
+    const batch = messages.slice(i, i + batchSize);
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          {
+            type: 'capture_messages',
+            data: batch,
+            platform: platform,
+            timestamp: Date.now(),
+          },
+          (_response) => {
+            const lastError = (chrome.runtime as any).lastError;
+            if (lastError) {
+              reject(lastError);
+            } else {
+              resolve();
+            }
+          }
+        );
+      });
+
+      console.log(
+        `[External Memory] Sent batch ${Math.floor(i / batchSize) + 1} with ${batch.length} messages`
+      );
+    } catch (error) {
+      console.error('[External Memory] Error sending message batch:', error);
+    }
+  }
+
+  console.log(`[External Memory] All ${messages.length} messages sent to service worker`);
+}
 
 try {
   const timestamp = new Date().toISOString();
@@ -18,13 +117,46 @@ try {
   // Usage in Chrome console: window.__externalMemory.parseMessages()
   const externalMemory = {
     /**
-     * Parse all messages from the current ChatGPT conversation
+     * Detect the current platform (ChatGPT or Claude)
+     * @returns 'chatgpt' | 'claude' | null
+     */
+    detectPlatform: () => {
+      const platform = detectPlatform();
+      console.log(`[External Memory] Detected platform: ${platform}`);
+      return platform;
+    },
+
+    /**
+     * Extract messages from the current page
+     * @returns Array of extracted CapturedMessage objects
+     */
+    extractMessages: () => {
+      const messages = extractMessages();
+      console.log(
+        `%c[External Memory] Extracted ${messages.length} messages`,
+        'color: #4CAF50; font-weight: bold;'
+      );
+      return messages;
+    },
+
+    /**
+     * Send messages to service worker
+     * @param messages - Optional: array of messages to send (default: extract current page)
+     */
+    sendMessages: async (messages?: CapturedMessage[]) => {
+      const messagesToSend = messages || extractMessages();
+      await sendMessages(messagesToSend);
+      console.log(`[External Memory] Sent ${messagesToSend.length} messages`);
+    },
+
+    /**
+     * Parse all messages from the current page
      * @returns Array of parsed messages
      */
     parseMessages: () => {
-      const messages = chatgptParseMessages();
+      const messages = extractMessages();
       console.log(
-        `%c[External Memory] Parsed ${messages.length} messages from ChatGPT`,
+        `%c[External Memory] Parsed ${messages.length} messages`,
         'color: #4CAF50; font-weight: bold;'
       );
       return messages;
@@ -43,20 +175,22 @@ try {
      * @returns Array of parsed messages (same as parseMessages but with formatted output)
      */
     testParser: () => {
-      const messages = chatgptParseMessages();
+      const messages = extractMessages();
+      const platform = detectPlatform();
       console.log(
         `%c╔════════════════════════════════════════════════════════════╗
-║        External Memory - ChatGPT Parser Test Results        ║
+║        External Memory - Message Parser Test Results        ║
 ╚════════════════════════════════════════════════════════════╝`,
         'color: #2196F3; font-family: monospace;'
       );
+      console.log(`%cPlatform: ${platform}`, 'color: #666;');
       console.log(`%cConversation URL: ${window.location.href}`, 'color: #666;');
       console.log(`%cMessages Found: ${messages.length}`, 'color: #666;');
       console.log('');
 
       if (messages.length === 0) {
         console.log(
-          '%cℹ️  No messages found. Make sure you have an active ChatGPT conversation.',
+          '%cℹ️  No messages found. Make sure you have an active conversation.',
           'color: #FF9800;'
         );
       } else {
@@ -66,7 +200,7 @@ try {
         );
         console.table(
           messages.map(msg => ({
-            Index: msg.messageIndex,
+            Index: msg.messageIndex || '-',
             Role: msg.role.toUpperCase(),
             Content: msg.content.substring(0, 60) + (msg.content.length > 60 ? '...' : ''),
             ID: msg.id.substring(0, 12) + '...',
@@ -90,17 +224,46 @@ try {
   (window as any).__externalMemory = externalMemory;
 
   console.log(
-    '%c✅ Parser available in console! Try these commands:',
+    '%c✅ Message capture available in console! Try these commands:',
     'color: #4CAF50; font-weight: bold;'
   );
-  console.log('  • window.__externalMemory.testParser()     // Pretty-printed results');
-  console.log('  • window.__externalMemory.parseMessages()  // Raw message array');
-  console.log('  • window.__externalMemory.getDebugInfo()   // Debug information');
+  console.log('  • window.__externalMemory.detectPlatform()  // Show detected platform');
+  console.log('  • window.__externalMemory.extractMessages() // Extract messages');
+  console.log('  • window.__externalMemory.parseMessages()   // Get message array');
+  console.log('  • window.__externalMemory.sendMessages()    // Send to service worker');
+  console.log('  • window.__externalMemory.testParser()      // Pretty-printed results');
+  console.log('  • window.__externalMemory.getDebugInfo()    // Debug information');
   console.log('');
   console.log(
     '%c💡 Tip: If __externalMemory is undefined, reload this page (Ctrl+R / Cmd+R)',
     'color: #FF9800; font-style: italic;'
   );
+
+  // Auto-capture and send messages on page load (when DOM is ready)
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', async () => {
+      console.log('[External Memory] DOM content loaded, auto-capturing messages...');
+      const messages = extractMessages();
+      if (messages.length > 0) {
+        console.log(
+          `[External Memory] Auto-captured ${messages.length} messages, sending to service worker...`
+        );
+        await sendMessages(messages);
+      }
+    });
+  } else {
+    // DOM is already loaded
+    console.log('[External Memory] DOM already loaded, auto-capturing messages...');
+    const messages = extractMessages();
+    if (messages.length > 0) {
+      console.log(
+        `[External Memory] Auto-captured ${messages.length} messages, sending to service worker...`
+      );
+      sendMessages(messages).catch((error) => {
+        console.error('[External Memory] Error auto-sending messages:', error);
+      });
+    }
+  }
 
   // Send test message to service worker
   try {
