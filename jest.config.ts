@@ -12,6 +12,7 @@ const config: Config = {
     '^@utils/(.*)$': '<rootDir>/src/utils/$1',
     '^@services/(.*)$': '<rootDir>/src/services/$1',
     '^@adapters/(.*)$': '<rootDir>/src/adapters/$1',
+    '\\.(css|less|scss|sass)$': '<rootDir>/jest.cssStub.js',
   },
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   collectCoverageFrom: [

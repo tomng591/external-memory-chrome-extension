@@ -1,12 +1,6 @@
 import '@testing-library/jest-dom';
 
 // Mock chrome API for testing
-declare global {
-  namespace globalThis {
-    var chrome: any;
-  }
-}
-
 global.chrome = {
   runtime: {
     onMessage: {
@@ -20,4 +14,7 @@ global.chrome = {
       set: jest.fn(),
     },
   },
-};
+  tabs: {
+    query: jest.fn(),
+  },
+} as any;
