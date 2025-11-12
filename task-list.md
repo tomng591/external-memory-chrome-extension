@@ -304,17 +304,23 @@ Uses **fetch interception (monkey patching) + ReadableStream.tee()** for:
 
 ### Task 4.1: Create Injected Script for ChatGPT API Interception
 **What**: Implement fetch interception script that captures messages from ChatGPT's API
+**Why**: ChatGPT API structure is already researched in `research/real-time-message-capture.md`; this task implements based on existing research
 **How**:
+- Refer to `research/real-time-message-capture.md` for API details:
+  - Endpoint patterns: `/backend-api/conversation`, `/api/conversation`
+  - Request body structure: `{conversation_id, parent_message_id, model, messages[]}`
+  - Response format: SSE (text/event-stream) with `data: {json}\n\n`
+  - Message structure: `{conversation_id, message_id, model, content, chunks[]}`
 - Create `src/content/injected.ts` (to be injected into page context):
   - Monkey patch `window.fetch` to intercept ChatGPT API calls
-  - Detect ChatGPT endpoints (`/backend-api/conversation`, `/api/conversation`)
+  - Detect ChatGPT endpoints using patterns from research
   - Capture outgoing user messages from request body:
     - Extract: conversationId, parentMessageId, model, messages array
   - Capture incoming responses using `ReadableStream.tee()`:
     - Split response stream into two identical branches
     - One for ChatGPT (unchanged), one for backup processing
   - For streaming responses (text/event-stream):
-    - Parse SSE format (data: {json}\n\n)
+    - Parse SSE format (data: {json}\n\n) - see research doc for examples
     - Extract conversation_id, message_id, model from first chunk
     - Accumulate content and track chunks
     - Send `CHATGPT_RESPONSE_CHUNK` and `CHATGPT_RESPONSE_COMPLETE` events
@@ -326,9 +332,9 @@ Uses **fetch interception (monkey patching) + ReadableStream.tee()** for:
 
 **Verify**:
 - TypeScript compiles without errors
-- Can instantiate and start interception
 - Manual: Open ChatGPT, send message, check browser console for injected script logs
-- No performance impact on ChatGPT responses
+- Verify captures both user message and AI response
+- No performance impact on ChatGPT responses (tee() is zero latency)
 
 ---
 
