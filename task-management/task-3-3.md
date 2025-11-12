@@ -461,16 +461,78 @@ describe('Settings Integration', () => {
 
 ## Note / Status
 
-- Status: ⏳ PENDING
+- Status: ⚠️ PARTIALLY COMPLETED
 - Assigned to: [To be assigned]
-- Dependencies: Task 3.2 (ObsidianAdapter Implementation) - can work in parallel or after
-- Blocks: Future tasks (Task 3.4+)
+- Dependencies: Task 3.2 (ObsidianAdapter Implementation) ✅ COMPLETED
+- Blocks: Task 3.4+ (future tasks)
 - Notes:
-  - Default storage: InMemory (safest fallback)
-  - Chrome storage key: `external-memory-settings`
-  - Settings stored as JSON in chrome.storage.sync
-  - TailwindCSS v4 available for styling
-  - React 19 with hooks available
-  - All chrome.storage operations are async (use callbacks or Promise wrappers)
-  - Service worker context is different from popup context (use messaging if needed to cross contexts)
-  - Component should be integrated into popup.tsx or settings route
+
+### ✅ COMPLETED Components:
+1. **Vault Directory Picker UI** (`src/ui/VaultDirectoryPicker.tsx`)
+   - React component for user to select vault directory
+   - Uses `window.showDirectoryPicker()` API
+   - Stores handle in IndexedDB via `src/utils/handleStorage.ts`
+
+2. **Options Page** (`src/options.tsx`, `public/options.html`)
+   - Full page interface for vault configuration
+   - Shows selected vault folder with confirmation
+   - Displays instructions and FAQ
+
+3. **Handle Persistence** (`src/utils/handleStorage.ts`)
+   - IndexedDB storage for FileSystemDirectoryHandle
+   - Functions: storeDirectoryHandle, getDirectoryHandle, removeDirectoryHandle
+   - Also stores metadata in chrome.storage.local
+
+4. **Service Worker Initialization** (`src/background.ts`)
+   - Loads stored handle on startup
+   - Initializes storage adapter with fallback chain:
+     * File System API (ObsidianAdapterBrowser) → InMemoryAdapter
+   - Handles permission validation and re-requesting
+   - Logs initialization status and adapter chain
+
+5. **IndexedDB Fallback Adapter** (`src/adapters/IndexedDBAdapter.ts`)
+   - Implements StorageAdapter interface
+   - Available as fallback if File System API unavailable
+
+### ⚠️ PARTIALLY COMPLETED - Still Need:
+1. **Settings Service** (`src/services/SettingsService.ts`)
+   - Formal service with loadSettings(), saveSettings(), validateSettings()
+   - Uses chrome.storage.sync instead of current IndexedDB approach
+   - Would allow other storage types (InMemory, IndexedDB, future adapters)
+
+2. **Settings Type Definition** (`src/types/Settings.ts`)
+   - Interface with storageType, obsidianVaultPath, timestamps
+   - Currently using ad-hoc handle storage instead
+
+3. **Settings Panel in Popup** (`src/ui/SettingsPanel.tsx`)
+   - Settings UI in popup.tsx (not just options page)
+   - Storage type dropdown
+   - Currently have options page but not popup integration
+
+4. **Settings Change Detection**
+   - Service worker listening to chrome.storage.onChanged events
+   - Would allow adapter re-initialization on settings change
+
+### Current Implementation Strategy:
+- Using IndexedDB for persistent FileSystemDirectoryHandle storage (more reliable than chrome.storage)
+- Using chrome.storage.local for metadata (directory name, timestamp)
+- Focus on browser File System API + InMemory fallback (MVP MVP)
+- Service worker initializes adapter on startup with automatic fallback
+- VaultDirectoryPicker in options page for initial setup
+
+### Why This Approach Works for MVP:
+- FileSystemDirectoryHandle persists reliably across browser sessions
+- No need for complex Settings service if only supporting File System API
+- Can be refactored to full Settings service pattern later (Task 3.4+)
+- Meets the core requirement: user selects vault, conversations auto-save there
+
+### To Complete Task 3.3 Fully:
+1. Create `src/types/Settings.ts` with Settings interface
+2. Create `src/services/SettingsService.ts` with CRUD operations
+3. Create `src/ui/SettingsPanel.tsx` for popup settings
+4. Update `src/background.ts` to listen for chrome.storage.onChanged
+5. Refactor handle storage to use Settings service instead of direct IndexedDB access
+
+### Recommendation:
+Current implementation is **functionally complete for MVP** (vault selection + auto-save works).
+Defer formal Settings service to Task 3.4 when adding support for multiple storage types (Google Docs, Postgres, etc.).
