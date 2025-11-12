@@ -5,9 +5,19 @@
  * and coordinates with storage systems.
  */
 
+import { StorageService } from './services/StorageService';
+import { InMemoryAdapter } from './adapters/InMemoryAdapter';
+import { CapturedMessage } from './types/Message';
+
 try {
   const timestamp = new Date().toISOString();
   console.log(`[External Memory] Service worker started at ${timestamp}`);
+
+  // Initialize storage adapter and service
+  const storageAdapter = new InMemoryAdapter();
+  const storageService = new StorageService(storageAdapter);
+
+  console.log('[External Memory] Storage service initialized with InMemoryAdapter');
   console.log('[External Memory] Service worker initialized and ready');
 
   // Listen for messages from content scripts
@@ -16,7 +26,6 @@ try {
       try {
         console.log('[External Memory] Message received from:', sender.url);
         console.log('[External Memory] Message type:', message?.type);
-        console.log('[External Memory] Message payload:', message);
 
         // Handle captured messages from content script
         if (message?.type === 'capture_messages') {
@@ -24,16 +33,58 @@ try {
             `[External Memory] Processing capture_messages: ${message?.data?.length || 0} messages from ${message?.platform}`
           );
 
+          // Save messages to storage
+          const messagesToSave: CapturedMessage[] = message?.data || [];
+
+          // Save messages asynchronously but respond immediately
+          storageService
+            .saveMessages(messagesToSave)
+            .then(() => {
+              console.log(
+                `[External Memory] Successfully saved ${messagesToSave.length} message(s) to storage`
+              );
+            })
+            .catch((error) => {
+              console.error('[External Memory] Error saving messages to storage:', error);
+            });
+
           const response = {
             type: 'capture_messages_response',
-            data: 'Messages received and processed',
+            data: 'Messages received and queued for storage',
             timestamp: Date.now(),
             received: true,
-            messageCount: message?.data?.length || 0,
+            messageCount: messagesToSave.length,
           };
 
-          console.log('[External Memory] Sending response back to content script:', response);
+          console.log('[External Memory] Sending response back to content script');
           sendResponse(response);
+        }
+        // Handle storage stats request (for debugging)
+        else if (message?.type === 'get_storage_stats') {
+          console.log('[External Memory] Retrieving storage statistics');
+
+          storageService
+            .getStorageStats()
+            .then((stats) => {
+              console.log('[External Memory] Storage stats retrieved:', stats);
+              sendResponse({
+                type: 'storage_stats_response',
+                data: stats,
+                timestamp: Date.now(),
+                received: true,
+              });
+            })
+            .catch((error) => {
+              console.error('[External Memory] Error getting storage stats:', error);
+              sendResponse({
+                type: 'storage_stats_response',
+                error: String(error),
+                timestamp: Date.now(),
+                received: false,
+              });
+            });
+
+          return true; // Keep connection open for async response
         }
         // Handle test message
         else if (message?.type === 'test') {

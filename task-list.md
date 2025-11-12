@@ -203,91 +203,59 @@ Granular breakdown of milestones and tasks. Each task is small, cohesive, and te
 **What**: Understand how Obsidian stores files and metadata
 **How**:
 - Read Obsidian documentation on vault structure
-- Identify file format (markdown), folder structure, metadata
-- Document findings in inline comments
+- Identify file format (markdown), folder structure, metadata to store all user conversations in 1 vault, and store each conversation in a markdown file
+- Write the sample format for the conversation markdown file. Store all of the research result and sample into research/obsidian-storage.md file for the implementation to refer to later
 
 **Verify**:
-- Create sample markdown file manually in Obsidian vault
-- Understand path structure
+- Understand path structure, vault and metadata of obsidian
+- Create the obsidian-storage.md file to store the research result
 
 ---
 
-### Task 3.2: Create ObsidianAdapter Implementation
-**What**: Implement StorageAdapter to save messages to Obsidian vault
+### Task 3.2: Create and Wire ObsidianAdapter Implementation
+**What**: Implement StorageAdapter to save messages to Obsidian vault and integrate with service worker
 **How**:
 - Create `src/adapters/ObsidianAdapter.ts`
-- Implement StorageAdapter interface
-- Convert Message to markdown format
-- Write file to Obsidian vault directory (using node fs or user-selected path)
+  - Implement StorageAdapter interface
+  - Convert Message to markdown format
+  - Write file to Obsidian vault directory (using node fs or user-selected path)
+  - Refer to research/obsidian-storage.md file for implementation details
+  - Understand how to write/store text/data to local file in macOS (will extend to Windows and Linux later)
+- Wire to Service Worker (`src/background.ts`)
+  - On startup, default to obsidian storage as output for now and instantiate ObsidianAdapter when configured
+  - When messages received from content script, save via adapter
+  - Log success/failure to console
 
 **Verify**:
 - TypeScript compiles
 - Adapter can be instantiated with vault path
-- Methods callable without errors
+- Adapter methods callable without errors
+- Markdown files created in local file storage with correct format
+- Send message from ChatGPT/Claude and verify file created in vault
 
 ---
 
-### Task 3.3: Create Settings Component UI
-**What**: React component for configuring storage and credentials
+### Task 3.3: Create Settings UI & Load Settings on Startup
+**What**: React component for configuring storage and initialize settings service
 **How**:
-- Create `src/ui/SettingsPanel.tsx`
-- Add form inputs for:
-  - Storage type selection (dropdown: InMemory, Obsidian)
-  - Obsidian vault path (file picker or text input)
-- Add save button that stores settings to `chrome.storage.sync`
+- Create `src/ui/SettingsPanel.tsx` (Settings Component)
+  - Add form inputs for:
+    - Storage type selection (dropdown: InMemory, Obsidian)
+    - Obsidian vault path (file picker or text input)
+  - Add save button that stores settings to `chrome.storage.sync`
+- Create `src/services/SettingsService.ts` (Settings Loading Service)
+  - Add function `loadSettings()` that reads from `chrome.storage.sync`
+  - Return parsed storage type and credentials
+  - Add fallback to InMemoryAdapter if no settings exist
+- Wire into service worker startup
 
 **Verify**:
-- Popup UI shows settings form
+- Popup UI shows settings form without errors
 - Can input vault path and select storage type
-- Settings form renders without errors
-
----
-
-### Task 3.4: Load Settings on Extension Startup
-**What**: Read stored settings from chrome.storage.sync and initialize adapter
-**How**:
-- Create `src/services/SettingsService.ts`
-- Add function `loadSettings()` that reads from `chrome.storage.sync`
-- Return parsed storage type and credentials
-- Add fallback to InMemoryAdapter if no settings exist
-
-**Verify**:
+- Settings are saved to `chrome.storage.sync`
 - Service worker loads settings on startup
 - Logs loaded settings to console
 - Falls back to InMemory if storage empty
-
----
-
-### Task 3.5: Wire ObsidianAdapter to Service Worker
-**What**: Service worker uses ObsidianAdapter to save messages when configured
-**How**:
-- Modify `src/background.ts` service worker
-- On startup, load settings and instantiate correct adapter
-- When messages received from content script, save via adapter
-- Log success/failure to console
-
-**Verify**:
-- Set Obsidian as storage backend in settings
-- Send message from ChatGPT/Claude
-- Verify message file created in Obsidian vault
-- File contains correct markdown format
-
----
-
-### Task 3.6: Integration Test with Puppeteer (Obsidian Flow)
-**What**: End-to-end test: open extension → configure Obsidian → capture message → verify file written
-**How**:
-- Create `tests/obsidian.integration.test.ts`
-- Use Puppeteer to:
-  - Launch Chrome with extension loaded
-  - Navigate to ChatGPT/Claude
-  - Send test message
-  - Verify Obsidian vault receives file
-- Use Jest as test runner
-
-**Verify**:
-- `npm run test:integration` passes
-- Test generates actual file in vault
 
 ---
 
