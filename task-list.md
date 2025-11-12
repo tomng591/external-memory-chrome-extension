@@ -290,9 +290,239 @@ Granular breakdown of milestones and tasks. Each task is small, cohesive, and te
 
 ---
 
+## Milestone 4: Real-Time Message Capture & Auto-Save
+
+### Task 4.1: Research ChatGPT & Claude DOM Update Behavior
+**What**: Understand how ChatGPT and Claude update their DOM when new messages arrive (both user messages and assistant responses)
+**How**:
+- Analyze ChatGPT DOM structure:
+  - How messages are added to the DOM (are they appended? replaced? streamed?)
+  - What CSS classes/selectors identify new messages
+  - How conversation context/ID is tracked in the DOM
+  - How user messages vs assistant responses are differentiated
+- Analyze Claude DOM structure:
+  - Same analysis as ChatGPT but for claude.ai
+  - Note any differences in message streaming (Claude uses streaming responses)
+- Document findings in `research/realtime-message-capture.md`:
+  - Selectors for message containers on each platform
+  - How to detect message completion vs partial stream
+  - DOM update patterns (mutation types, triggers, timing)
+  - Sample code showing how to observe message additions
+
+**Verify**:
+- Create `research/realtime-message-capture.md` with findings
+- Document at least 2-3 different message update scenarios per platform
+- Include visual diagram or examples of DOM structure
+
+---
+
+### Task 4.2: Implement DOM Mutation Observer for Message Detection
+**What**: Create service to detect when new messages are added to ChatGPT/Claude DOM in real-time
+**How**:
+- Create `src/services/MessageObserver.ts`:
+  - Class that wraps `MutationObserver` API
+  - Monitors DOM for message container changes
+  - Detects when new message elements are added
+  - Emits events when message change detected (don't parse yet, just detect)
+  - Handles platform-specific selectors (ChatGPT vs Claude)
+- Create `src/content/observers/chatgptObserver.ts`:
+  - Platform-specific observer for ChatGPT
+  - Uses selectors from Task 4.1 research
+  - Detects new messages and conversation changes
+- Create `src/content/observers/claudeObserver.ts`:
+  - Platform-specific observer for Claude
+  - Uses selectors from Task 4.1 research
+  - Handles streaming responses differently than ChatGPT
+
+**Verify**:
+- TypeScript compiles without errors
+- Observer can be instantiated and started
+- MutationObserver callback fires when test DOM elements change
+- Manual: Open ChatGPT, send message, check console logs show "message detected"
+
+---
+
+### Task 4.3: Implement Conversation ID Tracking
+**What**: Extract and track conversation ID from ChatGPT/Claude to group messages into conversations
+**How**:
+- Create `src/services/ConversationTracker.ts`:
+  - Extracts conversation ID from current page URL or DOM
+  - Maintains current conversation ID in memory
+  - Detects when conversation changes (new chat)
+  - Provides method to get current conversation ID and title
+- Update Message interface in `src/types/Message.ts`:
+  - Add `conversationId` field (already exists)
+  - Ensure it's properly extracted by parsers
+- Create `src/content/utils/conversationUtils.ts`:
+  - Platform-specific functions to extract conversation ID:
+    - ChatGPT: Extract from URL path (`/c/{conversationId}`)
+    - Claude: Extract from URL or DOM attribute
+  - Function to get conversation title from DOM
+  - Function to detect conversation change events
+
+**Verify**:
+- TypeScript compiles
+- Can extract conversation ID from ChatGPT URL
+- Can extract conversation ID from Claude URL
+- Conversation tracker emits change event when chat is cleared/new chat created
+- Manual: Open ChatGPT → check console logs "Conversation ID: ..."
+
+---
+
+### Task 4.4: Create Message Debouncer & Aggregator
+**What**: Batch and deduplicate real-time message captures to avoid saving incomplete/duplicate messages
+**How**:
+- Create `src/services/MessageDebouncer.ts`:
+  - Receives message detection events from MessageObserver
+  - Waits for DOM to stabilize (no new mutations for X milliseconds)
+  - Aggregates consecutive mutations into single message capture event
+  - Prevents capturing partial/incomplete messages (especially important for streaming responses)
+  - Debounce delay: 500-1000ms (configurable, tunable based on testing)
+- Create `src/services/MessageDeduplicator.ts`:
+  - Tracks recently saved messages by content hash
+  - Prevents duplicate saves if same message detected twice
+  - Maintains sliding window of recent message IDs
+  - Clears dedup cache periodically (every 5 minutes)
+
+**Verify**:
+- TypeScript compiles
+- Debouncer waits and aggregates multiple rapid mutations
+- After silence period, emits single aggregated message
+- Deduplicator rejects messages with duplicate content hash
+- Manual: Send rapid messages in ChatGPT, verify only captured once per message
+
+---
+
+### Task 4.5: Wire Message Auto-Capture to Content Script
+**What**: Integrate MessageObserver into content script to continuously detect and parse new messages
+**How**:
+- Update `src/content/index.ts`:
+  - Initialize MessageObserver on page load (for current platform)
+  - Initialize ConversationTracker
+  - Initialize MessageDebouncer
+  - On debounced message event:
+    - Call appropriate parser (chatgptParser or claudeParser)
+    - Extract new/updated messages from DOM
+    - Send to service worker via `chrome.runtime.sendMessage`
+  - Listen for conversation changes and track them
+- Add debug logging for each step (can be toggled via settings)
+- Handle page navigation (new conversation, reload, etc.)
+
+**Verify**:
+- Content script loads observer without errors
+- Console logs show message detection and parsing
+- Manual: Open ChatGPT → send message → see "Message detected and sent to storage" in console
+- Manual: Get response from AI → see response captured and sent
+
+---
+
+### Task 4.6: Implement Async Message Storage with Non-Blocking Queuing
+**What**: Store captured messages asynchronously without blocking UI interactions
+**How**:
+- Create `src/services/MessageQueue.ts`:
+  - In-memory queue for messages awaiting storage
+  - Persists queue to IndexedDB if storage fails (for reliability)
+  - Processes queue in background without blocking
+  - Retries failed saves with exponential backoff
+  - Limits concurrent storage operations (max 3 parallel)
+- Update `src/background.ts` service worker:
+  - Use MessageQueue to handle incoming messages
+  - Store messages to vault asynchronously
+  - Return success immediately (before storage completes)
+  - Log save status (success/failure/retry) for debugging
+- Add queue status tracking:
+  - Number of pending messages
+  - Last save timestamp
+  - Error count (for monitoring)
+
+**Verify**:
+- TypeScript compiles
+- Messages can be queued without blocking
+- Queue processes in background
+- Service worker accepts message and responds immediately
+- Manual: Spam send many messages in ChatGPT, verify UI doesn't freeze
+
+---
+
+### Task 4.7: Create Message Deduplication & Update Detection
+**What**: Detect and handle message updates (edited messages, streamed responses) without creating duplicates
+**How**:
+- Update `src/services/MessageDeduplicator.ts`:
+  - Track message IDs in addition to content hashes
+  - Detect if message ID was seen before (update vs new)
+  - For updates: merge with existing saved message
+  - For edits: update timestamp and mark as "edited"
+- Create `src/services/MessageUpdateHandler.ts`:
+  - Handles when same message is sent multiple times (e.g., streaming response)
+  - First occurrence: save as new message
+  - Subsequent occurrences with more content: merge into existing file
+  - Track message version/update count
+- Update ObsidianAdapter:
+  - Support updating existing conversation files
+  - Append new messages or update in-place based on ID
+  - Maintain message order and edit history
+
+**Verify**:
+- TypeScript compiles
+- Deduplicator detects when message ID is repeated
+- Update handler merges streaming response pieces
+- Manual: Send message that gets edited, verify file shows edited version once
+
+---
+
+### Task 4.8: Create Real-Time Capture Integration Tests
+**What**: Test the complete message capture flow with mock ChatGPT/Claude DOM
+**How**:
+- Create `src/content/__tests__/MessageObserver.test.ts`:
+  - Mock DOM with message elements
+  - Simulate MutationObserver events
+  - Test that observer detects messages
+  - Test platform-specific observers
+- Create `src/content/__tests__/realtime-capture.integration.test.ts`:
+  - Mock ChatGPT page with conversation
+  - Simulate user sending message
+  - Simulate AI response streaming in
+  - Verify messages are captured and sent to service worker
+  - Test multiple messages in sequence
+- Create `tests/realtime-capture.e2e.test.ts`:
+  - Puppeteer test with real ChatGPT/Claude (optional, may need credentials)
+  - Send actual message
+  - Wait for response
+  - Verify files appear in vault with correct content
+
+**Verify**:
+- `npm run test` passes all unit tests
+- Mock DOM mutations trigger observer correctly
+- Message parsing works on mock elements
+- Manual: Open ChatGPT, conversation gets captured to vault in real-time
+
+---
+
+### Task 4.9: Add Message Capture Status Indicator in Popup
+**What**: Show user current capture status and recent messages in extension popup
+**How**:
+- Update `src/popup.tsx`:
+  - Add section showing capture status (enabled/disabled/last captured)
+  - Show queue statistics (pending messages, last save time)
+  - Show recent captures from today (preview list)
+  - Add toggle to enable/disable real-time capture (for performance)
+- Create `src/ui/CaptureStatus.tsx`:
+  - Component showing real-time capture indicator (animated when capturing)
+  - Queue size and status
+  - Last message info (content preview, timestamp)
+- Query storage for recent messages and display in popup
+
+**Verify**:
+- Popup UI renders without errors
+- Capture status updates when messages are saved
+- Queue count decreases as messages are processed
+- Manual: Open popup while sending messages, see status update in real-time
+
+---
+
 ## Future Milestones (Not MVP)
 
-### Task 4.1: Create GoogleDocsAdapter
+### Task 5.1: Create GoogleDocsAdapter
 **What**: Implement StorageAdapter for Google Docs
 **How**: Authenticate with Google API, append messages to Doc
 
@@ -300,7 +530,7 @@ Granular breakdown of milestones and tasks. Each task is small, cohesive, and te
 
 ---
 
-### Task 4.2: Create PostgresAdapter
+### Task 5.2: Create PostgresAdapter
 **What**: Implement StorageAdapter for local Postgres database
 **How**: Connect to Postgres, insert messages into table
 
@@ -308,7 +538,7 @@ Granular breakdown of milestones and tasks. Each task is small, cohesive, and te
 
 ---
 
-### Task 4.3: Implement Message Format Conversion Tools
+### Task 5.3: Implement Message Format Conversion Tools
 **What**: Tools to convert messages between formats (markdown, JSON, CSV)
 **How**: Create converters in `src/utils/format`
 
@@ -316,7 +546,7 @@ Granular breakdown of milestones and tasks. Each task is small, cohesive, and te
 
 ---
 
-### Task 4.4: Build Message Review UI
+### Task 5.4: Build Message Review UI
 **What**: UI in popup to view, search, export stored messages
 **How**: Query StorageAdapter, render list of messages with search
 
