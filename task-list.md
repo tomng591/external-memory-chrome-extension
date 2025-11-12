@@ -467,32 +467,28 @@ Uses **fetch interception (monkey patching) + ReadableStream.tee()** for:
 
 ---
 
-### Task 4.8: Implement Message Storage with Non-Blocking Async Handling
-**What**: Store captured messages asynchronously without blocking extension
+### Task 4.8: Wire Captured Messages to Existing Service Worker Storage Pipeline
+**What**: Integrate Milestone 4 message capture into existing service worker message handling
 **How**:
 - Update `src/background.ts` service worker:
-  - When receiving formatted message from content script:
-    - Respond immediately to content script (before storage completes)
-    - Store message to vault/adapter in background (non-blocking)
-    - Log success/failure for debugging
-  - For multiple rapid messages:
-    - Handle them independently (each message stored separately)
-    - No need for queuing - they naturally happen in sequence
+  - Existing pattern (already proven in Milestone 2):
+    - Listen for incoming messages via `chrome.runtime.onMessage`
+    - Respond immediately to content script via `sendResponse()`
+    - Store message asynchronously in background (promise chain, don't await)
+  - For new Milestone 4 messages:
+    - Handle 'user_message' and 'assistant_message' types
+    - Use existing StorageService to save (same as current flow)
+    - Leverage existing ObsidianAdapter/IndexedDBAdapter/InMemoryAdapter
   - Error handling:
-    - Log storage errors to console
-    - Don't retry (MVP scope) - if one save fails, next message still works
-    - Show error in popup status if needed
-- Ensure storage calls don't block service worker:
-  - Use `await` for storage operations
-  - But don't await before responding to content script
-  - Let promise chain complete in background
+    - Log to console for debugging
+    - Continue processing other messages if one fails
+- No new queue/retry needed - just apply existing pattern to new message types
 
 **Verify**:
 - TypeScript compiles
-- Service worker responds immediately to content script
-- Storage happens in background (verify via console logs)
-- Multiple rapid messages all get stored (no message loss)
-- Manual: Spam messages in ChatGPT, verify all appear in vault without UI freezing
+- Service worker receives and processes both old and new message types
+- Verify via console logs: message received → formatted → stored → success/failure logged
+- Manual: Send messages in ChatGPT, verify vault files are created without any UI blocking
 
 ---
 
