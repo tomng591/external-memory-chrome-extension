@@ -302,114 +302,95 @@ Uses **fetch interception (monkey patching) + ReadableStream.tee()** for:
 
 ---
 
-### Task 4.1: Create Injected Script for ChatGPT API Interception
-**What**: Implement fetch interception script that captures messages from ChatGPT's API
-**Why**: ChatGPT API structure is already researched in `research/real-time-message-capture.md`; this task implements based on existing research
+### Task 4.1: Create Injected Script & Configure Content Script for ChatGPT API Interception
+**What**: Implement fetch interception script that captures messages from ChatGPT's API, configure manifest for script injection, and wire content script to receive captured data
+**Status**: ✅ COMPLETE
+
+**Implementation Details**:
+1. **Injected Script** (`src/content/injected.ts`):
+   - Monkey patches `window.fetch` to intercept all ChatGPT API calls
+   - Detects ChatGPT endpoints: `/backend-api/conversation`, `/backend-api/f/conversation`, `/api/conversation`
+   - Captures outgoing user messages from POST request body:
+     - Extracts: conversation_id, parent_message_id, model, messages array
+   - Captures incoming responses using `ReadableStream.tee()`:
+     - Creates two identical streams: one for ChatGPT (unchanged), one for processing
+     - Zero-latency operation (tee is instant)
+   - Handles RFC 6902 JSON Patch operations for streaming responses:
+     - Parses SSE format (`data: {json}\n\n`)
+     - Processes patch operations (append/prepend/replace) to accumulate response content
+     - Filters by content_type to skip metadata, only captures actual text responses
+     - Sends `CHATGPT_MESSAGE_SENT`, `CHATGPT_RESPONSE_CHUNK`, `CHATGPT_RESPONSE_COMPLETE` events
+   - Silent error handling with `try-catch` (doesn't break ChatGPT)
+
+2. **Utility Functions** (`src/content/utils/chatgptStreamUtils.ts`):
+   - `extractModelIdentifier()`: Robust model detection from multiple sources
+   - `applyContentPatchOperations()`: RFC 6902 patch operation processor
+     - Handles `/message/content/parts/0` path operations
+     - Applies append/prepend/replace mutations
+
+3. **Manifest Configuration** (`public/manifest.json`):
+   - Added `web_accessible_resources` for injected.js
+   - Configured patterns for both chatgpt.com and claude.ai
+   - Content script runs at `document_start` before ChatGPT code loads
+
+4. **Content Script** (`src/content/index.ts`):
+   - Injects injected.js via `chrome.runtime.getURL()`
+   - Listens for `window.addEventListener('message', ...)` events
+   - Receives all three message types: `CHATGPT_MESSAGE_SENT`, `CHATGPT_RESPONSE_CHUNK`, `CHATGPT_RESPONSE_COMPLETE`
+   - Forwards data to service worker via `chrome.runtime.sendMessage`
+
+**Test Results**:
+- ✅ TypeScript compilation: No errors
+- ✅ Build: dist/injected.js successfully generated (6.86 kB)
+- ✅ Unit tests: 273/273 passing
+- ✅ Manual testing: Verified on ChatGPT.com with real API responses
+- ✅ Fetch interception: Working (user messages and AI responses captured)
+- ✅ Streaming: RFC 6902 patch operations correctly applied
+- ✅ No performance impact: Zero-latency tee() confirmed working
+
+---
+
+### Task 4.2: Create Message Formatter & Integrate with Service Worker
+**What**: Convert raw API data from interception into canonical Message objects and wire captured messages through service worker for storage
 **How**:
-- Refer to `research/real-time-message-capture.md` for API details:
-  - Endpoint patterns: `/backend-api/conversation`, `/api/conversation`
-  - Request body structure: `{conversation_id, parent_message_id, model, messages[]}`
-  - Response format: SSE (text/event-stream) with `data: {json}\n\n`
-  - Message structure: `{conversation_id, message_id, model, content, chunks[]}`
-- Create `src/content/injected.ts` (to be injected into page context):
-  - Monkey patch `window.fetch` to intercept ChatGPT API calls
-  - Detect ChatGPT endpoints using patterns from research
-  - Capture outgoing user messages from request body:
-    - Extract: conversationId, parentMessageId, model, messages array
-  - Capture incoming responses using `ReadableStream.tee()`:
-    - Split response stream into two identical branches
-    - One for ChatGPT (unchanged), one for backup processing
-  - For streaming responses (text/event-stream):
-    - Parse SSE format (data: {json}\n\n) - see research doc for examples
-    - Extract conversation_id, message_id, model from first chunk
-    - Accumulate content and track chunks
-    - Send `CHATGPT_RESPONSE_CHUNK` and `CHATGPT_RESPONSE_COMPLETE` events
-  - For non-streaming responses:
-    - Clone response and read JSON body
-    - Extract same fields, send `CHATGPT_RESPONSE_COMPLETE`
-  - Use `window.postMessage` to send captured data to content script
-  - Silent error handling (don't break ChatGPT if capture fails)
+1. **Create Message Formatter** (`src/services/MessageFormatter.ts`):
+   - Function to format user message from ChatGPT API:
+     - Input: `{conversation_id, parent_message_id, model, messages[]}`
+     - Output: `Message` object with role='user', content extracted from messages array, platform='chatgpt'
+   - Function to format assistant response from ChatGPT API:
+     - Input: `{conversation_id, message_id, model, content, chunks[]}`
+     - Output: `Message` object with role='assistant', full accumulated content, platform='chatgpt'
+   - Handle edge cases: malformed data, empty content, missing fields
+   - Update `src/types/Message.ts` if needed to support chunks/streaming metadata
+
+2. **Update Content Script** (`src/content/index.ts`):
+   - Message handler already receives postMessage events from injected script
+   - Format raw data using MessageFormatter before sending to service worker
+   - Send to service worker via `chrome.runtime.sendMessage` with proper message type
+
+3. **Update Service Worker** (`src/background.ts`):
+   - Listen for messages from content script via `chrome.runtime.onMessage`
+   - Handle message types: 'chatgpt_message_sent' (user) and 'chatgpt_response_complete' (assistant)
+   - For user messages: save immediately via StorageService
+   - For assistant messages: wait for `RESPONSE_COMPLETE` event before saving (ensures full content)
+   - Use existing StorageService to save messages (reuses Milestone 2 storage pipeline)
+   - Async non-blocking storage (promise chain, don't await on client)
+   - Return success acknowledgment to content script
 
 **Verify**:
 - TypeScript compiles without errors
-- Manual: Open ChatGPT, send message, check browser console for injected script logs
-- Verify captures both user message and AI response
-- No performance impact on ChatGPT responses (tee() is zero latency)
-
----
-
-### Task 4.2: Update Manifest & Content Script for Injected Script
-**What**: Configure manifest to allow injected script and wire content script to receive postMessages
-**How**:
-- Update `public/manifest.json`:
-  - Add `web_accessible_resources` entry for injected script
-  - Include patterns for both chatgpt.com and claude.ai
-  - Verify content script runs at `document_start` (before ChatGPT code)
-- Update `src/content/index.ts`:
-  - Import injected script via `chrome.runtime.getURL()`
-  - Create and inject script tag into document
-  - Listen for `window.addEventListener('message', ...)` events
-  - Filter for `CHATGPT_MESSAGE_SENT`, `CHATGPT_RESPONSE_CHUNK`, `CHATGPT_RESPONSE_COMPLETE`
-  - Log received data for verification
-
-**Verify**:
-- Manifest validates without errors
-- Content script injects script tag successfully
-- Browser console shows "injected script loaded"
-- Manual: Open ChatGPT, verify injected script is running
-
----
-
-### Task 4.3: Create Message Formatter for API Data → Message Objects
-**What**: Convert raw API data from interception into canonical Message objects
-**How**:
-- Create `src/services/MessageFormatter.ts`:
-  - Function to format user message from ChatGPT API:
-    - Input: `{conversation_id, parent_message_id, model, messages[]}`
-    - Output: `Message` object with role='user', content from messages array, platform='chatgpt'
-  - Function to format assistant response from ChatGPT API:
-    - Input: `{conversation_id, message_id, model, content, chunks[]}`
-    - Output: `Message` object with role='assistant', full content, platform='chatgpt'
-  - Function to extract metadata:
-    - conversation title/ID from URL or response
-  - Handle edge cases:
-    - Malformed data
-    - Empty content
-    - Missing fields
-- Update `src/types/Message.ts` if needed to support chunks/streaming data
-
-**Verify**:
-- TypeScript compiles
-- Can format sample ChatGPT API data to Message objects
-- Output matches expected Message interface
-- Unit tests pass
-
----
-
-### Task 4.4: Implement Content Script Message Handler & Service Worker Integration
-**What**: Wire captured messages from injected script through content script to service worker
-**How**:
-- Update `src/content/index.ts` message handler:
-  - Receive postMessage events from injected script
-  - Format raw data using MessageFormatter
-  - Send to service worker via `chrome.runtime.sendMessage`
-  - Include message type: 'user_message' or 'assistant_message'
-- Update `src/background.ts` service worker:
-  - Listen for messages from content script
-  - Handle both user messages and assistant responses
-  - For assistant messages: wait for `RESPONSE_COMPLETE` before saving
-  - For user messages: save immediately
-  - Queue messages for storage (async, non-blocking)
-  - Return success to content script
-
-**Verify**:
+- Can format sample ChatGPT API data to canonical Message objects
 - Service worker receives messages without errors
-- Console logs show message flow: injected → content → service worker
-- Manual: Open ChatGPT, send message, check service worker console
+- Console logs show message flow: injected → content → service worker → storage
+- Unit tests pass for MessageFormatter
+- Manual: Open ChatGPT, send message, verify:
+  - Content script receives postMessage events
+  - Service worker logs show message saved
+  - Files created in Obsidian vault (if configured)
 
 ---
 
-### Task 4.5: Research Claude.ai API & Implement Interception
+### Task 4.3: Research Claude.ai API & Implement Interception
 **What**: Understand Claude.ai's API structure and implement similar fetch interception
 **How**:
 - Research Claude.ai API:
@@ -431,7 +412,7 @@ Uses **fetch interception (monkey patching) + ReadableStream.tee()** for:
 
 ---
 
-### Task 4.6: Create Platform Detection & Load Appropriate Injected Script
+### Task 4.4: Create Platform Detection & Load Appropriate Injected Script
 **What**: Detect which platform user is on and load correct injected script
 **How**:
 - Update `src/content/index.ts`:
@@ -448,7 +429,7 @@ Uses **fetch interception (monkey patching) + ReadableStream.tee()** for:
 
 ---
 
-### Task 4.7: Implement Message Deduplication & Streaming Completion Detection
+### Task 4.5: Implement Message Deduplication & Streaming Completion Detection
 **What**: Handle message updates, streaming completions, and prevent duplicates
 **How**:
 - Create `src/services/MessageDeduplicator.ts`:
@@ -473,22 +454,23 @@ Uses **fetch interception (monkey patching) + ReadableStream.tee()** for:
 
 ---
 
-### Task 4.8: Wire Captured Messages to Existing Service Worker Storage Pipeline
-**What**: Integrate Milestone 4 message capture into existing service worker message handling
+### Task 4.6: Error Handling & Message Pipeline Robustness
+**What**: Integrate Milestone 4 message capture into existing service worker message handling with robust error handling
 **How**:
 - Update `src/background.ts` service worker:
   - Existing pattern (already proven in Milestone 2):
     - Listen for incoming messages via `chrome.runtime.onMessage`
     - Respond immediately to content script via `sendResponse()`
     - Store message asynchronously in background (promise chain, don't await)
-  - For new Milestone 4 messages:
-    - Handle 'user_message' and 'assistant_message' types
+  - For Milestone 4 messages:
+    - Handle 'chatgpt_message_sent' and 'chatgpt_response_complete' types
     - Use existing StorageService to save (same as current flow)
     - Leverage existing ObsidianAdapter/IndexedDBAdapter/InMemoryAdapter
   - Error handling:
     - Log to console for debugging
     - Continue processing other messages if one fails
-- No new queue/retry needed - just apply existing pattern to new message types
+    - Gracefully handle storage adapter failures
+- No new queue/retry needed - apply existing pattern to new message types
 
 **Verify**:
 - TypeScript compiles
