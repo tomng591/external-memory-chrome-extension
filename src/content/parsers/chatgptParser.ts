@@ -121,8 +121,8 @@ function detectMessageRole(element: Element): 'user' | 'assistant' {
     return 'user';
   }
 
-  // Log a warning so we know this fallback was used
-  console.warn('[ChatGPT Parser] Could not determine message role, defaulting to assistant');
+  // Log a debug message - this is expected during API interception since we're not relying on DOM parsing
+  console.debug('[ChatGPT Parser] Could not determine message role from DOM, defaulting to assistant. (This is OK - using API interception instead)');
 
   // Default to assistant if unsure (safer default for message capture)
   return 'assistant';

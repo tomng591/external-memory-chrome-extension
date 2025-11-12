@@ -8,6 +8,13 @@
 import { parseMessages as chatgptParseMessages, getParserDebugInfo } from './parsers/chatgptParser';
 import { parseMessages as claudeParseMessages } from './parsers/claudeParser';
 import { CapturedMessage } from '../types/Message';
+import {
+  formatUserMessage,
+  formatAssistantResponse,
+  validateMessage,
+  RawUserMessage,
+  RawAssistantResponse,
+} from '../services/MessageFormatter';
 
 /**
  * Detects which platform (ChatGPT or Claude) the content script is running on
@@ -337,32 +344,57 @@ try {
 
       // Handle fetch-intercepted messages from injected script
       switch (type) {
-        case 'CHATGPT_MESSAGE_SENT':
+        case 'CHATGPT_MESSAGE_SENT': {
           console.log(
             '[External Memory] Captured user message via API interception:',
             data
           );
-          // Forward to service worker
-          chrome.runtime.sendMessage(
-            {
-              type: 'chatgpt_message_sent',
-              data: data,
-              timestamp: Date.now(),
-            },
-            () => {
-              if ((chrome.runtime as any).lastError) {
-                console.debug(
-                  '[External Memory] Error sending message to service worker:',
-                  (chrome.runtime as any).lastError
-                );
-              } else {
-                console.debug(
-                  '[External Memory] Message sent to service worker successfully'
-                );
-              }
+
+          // DEBUG: Log the structure of messages array to help diagnose issues
+          if (data?.messages) {
+            console.log('[External Memory] DEBUG - Messages array structure:');
+            data.messages.forEach((msg: any, idx: number) => {
+              console.log(`  [${idx}] role: ${msg.role}, content type: ${typeof msg.content}`, msg.content);
+            });
+          }
+
+          try {
+            // Format raw API data into canonical CapturedMessage
+            const formattedMessage = formatUserMessage(data as RawUserMessage);
+
+            // Validate formatted message
+            if (!validateMessage(formattedMessage)) {
+              console.error('[External Memory] Formatted message failed validation');
+              break;
             }
-          );
+
+            console.log('[External Memory] Message formatted and sent to service worker');
+
+            // Forward formatted message to service worker
+            chrome.runtime.sendMessage(
+              {
+                type: 'chatgpt_message_sent',
+                data: formattedMessage,
+                timestamp: Date.now(),
+              },
+              () => {
+                if ((chrome.runtime as any).lastError) {
+                  console.debug(
+                    '[External Memory] Error sending message to service worker:',
+                    (chrome.runtime as any).lastError
+                  );
+                } else {
+                  console.debug(
+                    '[External Memory] Message sent to service worker successfully'
+                  );
+                }
+              }
+            );
+          } catch (error) {
+            console.debug('[External Memory] Error formatting user message:', error);
+          }
           break;
+        }
 
         case 'CHATGPT_RESPONSE_CHUNK':
           console.debug(
@@ -373,32 +405,49 @@ try {
           // (can be used for real-time progress updates)
           break;
 
-        case 'CHATGPT_RESPONSE_COMPLETE':
+        case 'CHATGPT_RESPONSE_COMPLETE': {
           console.log(
             '[External Memory] Captured complete response via API interception:',
             data
           );
-          // Forward to service worker
-          chrome.runtime.sendMessage(
-            {
-              type: 'chatgpt_response_complete',
-              data: data,
-              timestamp: Date.now(),
-            },
-            () => {
-              if ((chrome.runtime as any).lastError) {
-                console.debug(
-                  '[External Memory] Error sending response to service worker:',
-                  (chrome.runtime as any).lastError
-                );
-              } else {
-                console.debug(
-                  '[External Memory] Response sent to service worker successfully'
-                );
-              }
+
+          try {
+            // Format raw API data into canonical CapturedMessage
+            const formattedMessage = formatAssistantResponse(data as RawAssistantResponse);
+
+            // Validate formatted message
+            if (!validateMessage(formattedMessage)) {
+              console.error('[External Memory] Formatted message failed validation');
+              break;
             }
-          );
+
+            console.log('[External Memory] Message formatted and sent to service worker');
+
+            // Forward formatted message to service worker
+            chrome.runtime.sendMessage(
+              {
+                type: 'chatgpt_response_complete',
+                data: formattedMessage,
+                timestamp: Date.now(),
+              },
+              () => {
+                if ((chrome.runtime as any).lastError) {
+                  console.debug(
+                    '[External Memory] Error sending response to service worker:',
+                    (chrome.runtime as any).lastError
+                  );
+                } else {
+                  console.debug(
+                    '[External Memory] Response sent to service worker successfully'
+                  );
+                }
+              }
+            );
+          } catch (error) {
+            console.debug('[External Memory] Error formatting assistant response:', error);
+          }
           break;
+        }
 
         default:
           // Ignore unknown message types

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FileSystemDirectoryHandle, isFileSystemAPIAvailable } from '../types/FileSystemHandle';
-import { storeDirectoryHandle, getDirectoryHandle, storeDirectoryName } from '../utils/handleStorage';
+import { storeDirectoryHandle, storeDirectoryName } from '../utils/handleStorage';
 
 interface VaultDirectoryPickerProps {
   onDirectorySelected?: (handle: FileSystemDirectoryHandle) => void;

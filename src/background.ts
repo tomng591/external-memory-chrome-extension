@@ -147,6 +147,70 @@ try {
           console.log('[External Memory] Sending response back to content script');
           sendResponse(response);
         }
+        // Handle API-intercepted user messages from content script (Task 4.2)
+        else if (message?.type === 'chatgpt_message_sent') {
+          console.log('[External Memory] Received formatted user message from content script');
+
+          const formattedMessage = message?.data;
+
+          // Save message asynchronously without blocking the response
+          if (storageService && formattedMessage) {
+            storageService
+              .saveMessage(formattedMessage)
+              .then(() => {
+                console.log(
+                  `[External Memory] User message saved to storage: ${formattedMessage.id}`
+                );
+              })
+              .catch((error) => {
+                console.debug(
+                  '[External Memory] Error saving user message to storage:',
+                  error
+                );
+              });
+          } else {
+            console.warn('[External Memory] Storage service not ready or invalid message');
+          }
+
+          // Send immediate acknowledgment to content script
+          sendResponse({
+            received: true,
+            timestamp: Date.now(),
+            data: 'User message received and queued for storage',
+          });
+        }
+        // Handle API-intercepted assistant responses from content script (Task 4.2)
+        else if (message?.type === 'chatgpt_response_complete') {
+          console.log('[External Memory] Received formatted assistant response from content script');
+
+          const formattedMessage = message?.data;
+
+          // Save message asynchronously without blocking the response
+          if (storageService && formattedMessage) {
+            storageService
+              .saveMessage(formattedMessage)
+              .then(() => {
+                console.log(
+                  `[External Memory] Assistant message saved to storage: ${formattedMessage.id}`
+                );
+              })
+              .catch((error) => {
+                console.debug(
+                  '[External Memory] Error saving assistant message to storage:',
+                  error
+                );
+              });
+          } else {
+            console.warn('[External Memory] Storage service not ready or invalid message');
+          }
+
+          // Send immediate acknowledgment to content script
+          sendResponse({
+            received: true,
+            timestamp: Date.now(),
+            data: 'Assistant response received and queued for storage',
+          });
+        }
         // Handle storage stats request (for debugging)
         else if (message?.type === 'get_storage_stats') {
           console.log('[External Memory] Retrieving storage statistics');

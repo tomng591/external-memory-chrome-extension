@@ -260,10 +260,10 @@ import {
 
               const hasMessage = !!json.message || !!json.v?.message;
               const hasResumeToken = !!json.token;
-              const isMetadata = json.type && ['conversation_detail_metadata', 'resume_conversation_token'].includes(json.type);
 
               if (hasMessage || hasResumeToken) {
                 // Process message or token chunk
+                // Note: Metadata types like 'conversation_detail_metadata', 'resume_conversation_token' are handled implicitly
               }
 
               // Handle both direct message format and patch format (json.v.message)
