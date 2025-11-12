@@ -467,25 +467,32 @@ Uses **fetch interception (monkey patching) + ReadableStream.tee()** for:
 
 ---
 
-### Task 4.8: Create Message Queue with Async Storage
-**What**: Queue messages and store asynchronously without blocking
+### Task 4.8: Implement Message Storage with Non-Blocking Async Handling
+**What**: Store captured messages asynchronously without blocking extension
 **How**:
-- Create `src/services/MessageQueue.ts`:
-  - In-memory queue for pending messages
-  - Persist failed saves to IndexedDB
-  - Process queue in background (max 3 concurrent)
-  - Implement retry with exponential backoff
-  - Track queue status: pending count, last save time
-- Update `src/background.ts`:
-  - Use MessageQueue for all saves
-  - Respond immediately to content script (before storage completes)
-  - Log success/failure/retry for debugging
+- Update `src/background.ts` service worker:
+  - When receiving formatted message from content script:
+    - Respond immediately to content script (before storage completes)
+    - Store message to vault/adapter in background (non-blocking)
+    - Log success/failure for debugging
+  - For multiple rapid messages:
+    - Handle them independently (each message stored separately)
+    - No need for queuing - they naturally happen in sequence
+  - Error handling:
+    - Log storage errors to console
+    - Don't retry (MVP scope) - if one save fails, next message still works
+    - Show error in popup status if needed
+- Ensure storage calls don't block service worker:
+  - Use `await` for storage operations
+  - But don't await before responding to content script
+  - Let promise chain complete in background
 
 **Verify**:
 - TypeScript compiles
-- Messages queue without blocking
-- Multiple rapid messages processed correctly
-- Queue status accessible via chrome DevTools
+- Service worker responds immediately to content script
+- Storage happens in background (verify via console logs)
+- Multiple rapid messages all get stored (no message loss)
+- Manual: Spam messages in ChatGPT, verify all appear in vault without UI freezing
 
 ---
 
