@@ -13,6 +13,11 @@ Implement the ObsidianAdapter class that converts captured messages into markdow
    - Import required dependencies: `fs/promises` for async file operations, `path` for file path handling
    - Import `Message` interface from `src/types/Message`
    - Import `StorageAdapter` interface from `src/adapters/StorageAdapter`
+   - **Review the Message interface** in `src/types/Message.ts` to understand the shape of captured message data:
+     - Know what fields are available: `id`, `conversationId`, `role`, `content`, `timestamp`, `platform`, `model`
+     - Understand field types: `role` is 'user' | 'assistant', `platform` is 'chatgpt' | 'claude'
+     - Understand timestamp format: Unix milliseconds (number type)
+     - This is critical context before implementing `messageToMarkdown()` helper method
 
 2. Implement the `ObsidianAdapter` class:
    - Constructor: Accept `vaultPath: string` parameter
@@ -35,6 +40,10 @@ Implement the ObsidianAdapter class that converts captured messages into markdow
 3. Helper methods for ObsidianAdapter:
    - `ensureDirectoryStructure()`: Create vault folder structure
    - `messageToMarkdown(message: Message): string`: Convert single message to markdown format
+     - **Input**: Message object (refer to `src/types/Message.ts` for field definitions)
+     - **Output**: Markdown string with format `## {Role} — {Timestamp}\n\n{Content}`
+     - Use message fields: `role` (capitalize to 'User'/'Assistant'), `content`, `timestamp` (convert Unix ms to ISO 8601)
+     - Preserve message content formatting (code blocks, lists, etc.)
    - `conversationToFile(conversationId: string, messages: Message[]): string`: Convert full conversation to markdown file with frontmatter
    - `parseMarkdownFile(filePath: string): Message[]`: Parse markdown file back to Message array
    - `generateFileName(conversationId: string, timestamp: number): string`: Create standardized filename
