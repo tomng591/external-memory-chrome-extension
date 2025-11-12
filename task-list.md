@@ -489,53 +489,6 @@ Uses **fetch interception (monkey patching) + ReadableStream.tee()** for:
 
 ---
 
-### Task 4.9: Create Unit & Integration Tests
-**What**: Test message capture flow without needing real ChatGPT
-**How**:
-- Create `src/content/__tests__/injected.test.ts`:
-  - Mock fetch function
-  - Simulate ChatGPT API requests/responses
-  - Test outgoing message capture
-  - Test streaming response capture with tee()
-  - Test SSE parsing
-  - Test error handling
-- Create `src/content/__tests__/messageFormatter.test.ts`:
-  - Test formatting ChatGPT API data to Message objects
-  - Test edge cases (empty content, missing fields)
-- Create `src/services/__tests__/MessageDeduplicator.test.ts`:
-  - Test duplicate detection
-  - Test streaming completion
-  - Test regeneration detection
-
-**Verify**:
-- `npm run test` passes all tests
-- Unit tests cover happy paths and edge cases
-- Manual: Open real ChatGPT/Claude and verify capture works end-to-end
-
----
-
-### Task 4.10: Add Capture Status & Debug Logging
-**What**: Show users capture status and enable debugging
-**How**:
-- Update `src/popup.tsx`:
-  - Add capture status indicator (enabled/disabled)
-  - Show last captured message (with timestamp)
-  - Show queue statistics (pending messages)
-- Update `src/content/index.ts`:
-  - Add debug logging (can be toggled via console command)
-  - Log message flow: "Message received", "Sent to service worker", etc.
-  - Show data shapes for troubleshooting
-- Update `src/background.ts`:
-  - Log message processing: queue size, storage status
-
-**Verify**:
-- Popup UI renders without errors
-- Status updates in real-time as messages are saved
-- Debug logs appear in console when enabled
-- Manual: Open popup while chatting, see status update
-
----
-
 ## Future Milestones (Not MVP)
 
 ### Task 5.1: Create GoogleDocsAdapter
