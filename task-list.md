@@ -235,6 +235,37 @@ Granular breakdown of milestones and tasks. Each task is small, cohesive, and te
 
 ---
 
+### Task 3.2.1: Refactor ObsidianAdapter to Use Browser File System APIs
+**What**: Convert ObsidianAdapter from Node.js `fs/promises` to Chrome File System Access API for actual file system access in browser extension
+**Why**: Task 3.2 uses Node.js APIs which don't work in Chrome extension sandbox. Need browser-compatible solution.
+**How**:
+- Refactor `src/adapters/ObsidianAdapter.ts` to use Chrome File System Access API:
+  - Replace `fs/promises` with `FileSystemDirectoryHandle` API
+  - Use `window.showDirectoryPicker()` for user directory selection
+  - Implement file read/write using `fileHandle.createWritable()`
+  - Store directory handle in `chrome.storage.local` for persistence
+- Create `src/adapters/IndexedDBAdapter.ts` as fallback:
+  - Implements StorageAdapter interface
+  - Stores conversations as JSON in IndexedDB
+  - Useful if File System API unavailable
+- Create `src/ui/VaultDirectoryPicker.tsx` component:
+  - UI for user to select vault directory
+  - Button: "Choose Obsidian Vault Folder"
+  - Shows selected path and validates writeability
+- Update `src/background.ts` with fallback chain:
+  - Try Chrome File System API → fallback to IndexedDB → fallback to InMemory
+  - Detect API availability and initialize appropriate adapter
+
+**Verify**:
+- TypeScript compiles without errors
+- User can select vault directory via UI picker
+- Files are actually written to user's selected directory
+- IndexedDB fallback works if File System API unavailable
+- Service worker gracefully handles permission denials
+- Manual test: Grant permissions → choose folder → send message → file appears on disk
+
+---
+
 ### Task 3.3: Create Settings UI & Load Settings on Startup
 **What**: React component for configuring storage and initialize settings service
 **How**:

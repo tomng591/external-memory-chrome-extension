@@ -16,6 +16,30 @@ const copyPublicPlugin = () => {
         fs.copyFileSync(manifestSrc, manifestDest);
       }
 
+      // Copy and rewrite popup.html
+      const popupSrc = path.resolve(__dirname, 'public/popup.html');
+      const popupDest = path.resolve(__dirname, 'dist/popup.html');
+      if (fs.existsSync(popupSrc)) {
+        let popupHtml = fs.readFileSync(popupSrc, 'utf-8');
+        popupHtml = popupHtml.replace(
+          /<script[^>]+src="[^"]*"[^>]*><\/script>/,
+          '<script type="module" crossorigin src="/popup.js"></script>'
+        );
+        fs.writeFileSync(popupDest, popupHtml);
+      }
+
+      // Copy and rewrite options.html
+      const optionsSrc = path.resolve(__dirname, 'public/options.html');
+      const optionsDest = path.resolve(__dirname, 'dist/options.html');
+      if (fs.existsSync(optionsSrc)) {
+        let optionsHtml = fs.readFileSync(optionsSrc, 'utf-8');
+        optionsHtml = optionsHtml.replace(
+          /<script[^>]+src="[^"]*"[^>]*><\/script>/,
+          '<script type="module" crossorigin src="/options.js"></script>'
+        );
+        fs.writeFileSync(optionsDest, optionsHtml);
+      }
+
       // Copy icons
       const iconsSrc = path.resolve(__dirname, 'public/icons');
       const iconsDest = path.resolve(__dirname, 'dist/icons');
@@ -53,7 +77,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
-        popup: path.resolve(__dirname, 'public/popup.html'),
+        popup: path.resolve(__dirname, 'src/popup-entry.tsx'),
+        options: path.resolve(__dirname, 'src/options-entry.tsx'),
         content: path.resolve(__dirname, 'src/content/index.ts'),
         injected: path.resolve(__dirname, 'src/content/injected.ts'),
         background: path.resolve(__dirname, 'src/background.ts'),

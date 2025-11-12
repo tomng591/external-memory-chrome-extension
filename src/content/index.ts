@@ -227,8 +227,8 @@ try {
         chrome.runtime.sendMessage(
           { type: 'get_storage_stats' },
           (response) => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
+            if ((chrome.runtime as any).lastError) {
+              reject(new Error((chrome.runtime as any).lastError.message));
               return;
             }
 
@@ -278,7 +278,7 @@ try {
   // Inject the injected script into the page (MAIN world)
   try {
     const script = document.createElement('script');
-    script.src = chrome.runtime.getURL('injected.js');
+    script.src = (chrome.runtime as any).getURL('injected.js');
     script.type = 'module';
     script.onload = () => {
       console.log('[External Memory] Injected script loaded successfully');

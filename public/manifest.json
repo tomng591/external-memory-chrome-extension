@@ -17,6 +17,7 @@
     "default_popup": "popup.html",
     "default_title": "External Memory"
   },
+  "options_page": "options.html",
   "content_scripts": [
     {
       "matches": [
@@ -41,6 +42,7 @@
     }
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   }
 }

@@ -26,12 +26,12 @@ function sendToContentScript(action: string, payload?: any): Promise<any> {
 
     // Setup timeout
     const timeout = setTimeout(() => {
-      pendingRequests.delete(id);
+      pendingRequests.delete(String(id));
       reject(new Error(`${action} request timeout (no response from content script)`));
     }, 5000);
 
     // Store pending request
-    pendingRequests.set(id, { resolve, reject, timeout });
+    pendingRequests.set(String(id), { resolve, reject, timeout });
 
     // Create custom event to send to content script
     const event = new CustomEvent('__external_memory_request', {
@@ -47,12 +47,12 @@ function sendToContentScript(action: string, payload?: any): Promise<any> {
  */
 document.addEventListener('__external_memory_response', (event: any) => {
   const { id, success, data, error } = event.detail;
-  const pending = pendingRequests.get(id);
+  const pending = pendingRequests.get(String(id));
 
   if (!pending) return;
 
   clearTimeout(pending.timeout);
-  pendingRequests.delete(id);
+  pendingRequests.delete(String(id));
 
   if (success) {
     pending.resolve(data);

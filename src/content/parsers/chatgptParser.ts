@@ -48,30 +48,81 @@ function detectMessageRole(element: Element): 'user' | 'assistant' {
     if (role === 'assistant') return 'assistant';
   }
 
-  // Third priority: check for CSS classes that indicate role
+  // Third priority: check for avatar/icon indicators (ChatGPT usually shows user avatar on one side)
+  // Look for user avatar element (typically shows user's initial or icon)
+  const userAvatarSelectors = [
+    '[data-user-avatar]',
+    '[class*="user-avatar"]',
+    'img[alt*="User"]',
+    'img[alt*="user"]',
+  ];
+
+  for (const selector of userAvatarSelectors) {
+    if (element.querySelector(selector)) {
+      return 'user';
+    }
+  }
+
+  // Assistant avatar indicators
+  const assistantAvatarSelectors = [
+    '[data-assistant-avatar]',
+    '[class*="assistant-avatar"]',
+    'img[alt*="Assistant"]',
+    'img[alt*="assistant"]',
+    '[class*="ChatGPT"]',
+  ];
+
+  for (const selector of assistantAvatarSelectors) {
+    if (element.querySelector(selector)) {
+      return 'assistant';
+    }
+  }
+
+  // Fourth priority: check for CSS classes that indicate role
   const className = element.className || '';
 
-  // User messages typically have light background (bg-gray-50)
-  if (className.includes('bg-gray-50')) {
+  // User messages typically have light background (bg-gray-50 or similar)
+  if (className.includes('bg-gray-50') || className.includes('gray-50')) {
     return 'user';
   }
 
   // Assistant messages typically have darker background
-  if (className.includes('dark:bg-gray-800')) {
+  if (className.includes('dark:bg-gray-800') || className.includes('gray-700') || className.includes('gray-800')) {
     return 'assistant';
   }
 
-  // Fallback: check parent elements for role indicators
+  // Fifth priority: check parent elements for role indicators
   const parent = element.parentElement;
   if (parent) {
     const parentClass = parent.className || '';
-    if (parentClass.includes('bg-gray-50')) {
+    if (parentClass.includes('bg-gray-50') || parentClass.includes('gray-50')) {
       return 'user';
     }
-    if (parentClass.includes('dark:bg-gray-800')) {
+    if (parentClass.includes('dark:bg-gray-800') || parentClass.includes('gray-700')) {
       return 'assistant';
     }
+
+    // Check grandparent for role indicators
+    const grandparent = parent.parentElement;
+    if (grandparent) {
+      const gpClass = grandparent.className || '';
+      if (gpClass.includes('bg-gray-50') || gpClass.includes('gray-50')) {
+        return 'user';
+      }
+      if (gpClass.includes('dark:bg-gray-800') || gpClass.includes('gray-700')) {
+        return 'assistant';
+      }
+    }
   }
+
+  // Final fallback: check for text direction or alignment (right-aligned = user, left-aligned = assistant)
+  const style = window.getComputedStyle(element);
+  if (style.textAlign === 'right' || element.getAttribute('dir') === 'rtl') {
+    return 'user';
+  }
+
+  // Log a warning so we know this fallback was used
+  console.warn('[ChatGPT Parser] Could not determine message role, defaulting to assistant');
 
   // Default to assistant if unsure (safer default for message capture)
   return 'assistant';
