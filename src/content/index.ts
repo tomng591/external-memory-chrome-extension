@@ -276,20 +276,138 @@ try {
   }
 
   // Inject the injected script into the page (MAIN world)
-  try {
-    const script = document.createElement('script');
-    script.src = (chrome.runtime as any).getURL('injected.js');
-    script.type = 'module';
-    script.onload = () => {
-      console.log('[External Memory] Injected script loaded successfully');
-    };
-    script.onerror = () => {
-      console.error('[External Memory] Failed to load injected script');
-    };
-    document.documentElement.appendChild(script);
-  } catch (error) {
-    console.error('[External Memory] Error injecting script:', error);
+  async function injectScript() {
+    try {
+      console.log('[External Memory] Attempting to inject script...');
+
+      const script = document.createElement('script');
+      const injectedUrl = (chrome.runtime as any).getURL('injected.js');
+
+      console.log('[External Memory] Injected script URL:', injectedUrl);
+      console.log('[External Memory] chrome.runtime available:', !!chrome.runtime);
+      console.log('[External Memory] chrome.runtime.getURL available:', !!(chrome.runtime as any).getURL);
+
+      script.src = injectedUrl;
+      script.onload = () => {
+        console.log('[External Memory] ✓ Injected script loaded successfully');
+      };
+      script.onerror = (error) => {
+        console.error('[External Memory] ✗ Failed to load injected script:', error);
+      };
+
+      console.log('[External Memory] Script element created, type:', script.type);
+      console.log('[External Memory] Appending script to document.head...');
+
+      // Try appending to head first, then documentElement
+      if (document.head) {
+        document.head.appendChild(script);
+        console.log('[External Memory] Script appended to head successfully');
+      } else {
+        document.documentElement.appendChild(script);
+        console.log('[External Memory] Script appended to documentElement successfully');
+      }
+
+      // Wait a bit to see if script loaded
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      console.log('[External Memory] Injection complete');
+    } catch (error) {
+      console.error('[External Memory] Error injecting script:', error);
+    }
   }
+
+  // Try to inject as soon as possible
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', injectScript);
+  } else {
+    injectScript();
+  }
+
+  /**
+   * Listen for postMessages from injected script (fetch interception)
+   * These events contain captured API data that should be forwarded to the service worker
+   */
+  window.addEventListener('message', (event) => {
+    // Only accept messages from same origin (injected script)
+    if (event.source !== window) return;
+
+    try {
+      const { type, data } = event.data;
+
+      if (!type || !data) return;
+
+      // Handle fetch-intercepted messages from injected script
+      switch (type) {
+        case 'CHATGPT_MESSAGE_SENT':
+          console.log(
+            '[External Memory] Captured user message via API interception:',
+            data
+          );
+          // Forward to service worker
+          chrome.runtime.sendMessage(
+            {
+              type: 'chatgpt_message_sent',
+              data: data,
+              timestamp: Date.now(),
+            },
+            () => {
+              if ((chrome.runtime as any).lastError) {
+                console.debug(
+                  '[External Memory] Error sending message to service worker:',
+                  (chrome.runtime as any).lastError
+                );
+              } else {
+                console.debug(
+                  '[External Memory] Message sent to service worker successfully'
+                );
+              }
+            }
+          );
+          break;
+
+        case 'CHATGPT_RESPONSE_CHUNK':
+          console.debug(
+            '[External Memory] Captured response chunk via API interception:',
+            data
+          );
+          // Optionally forward chunk updates to service worker
+          // (can be used for real-time progress updates)
+          break;
+
+        case 'CHATGPT_RESPONSE_COMPLETE':
+          console.log(
+            '[External Memory] Captured complete response via API interception:',
+            data
+          );
+          // Forward to service worker
+          chrome.runtime.sendMessage(
+            {
+              type: 'chatgpt_response_complete',
+              data: data,
+              timestamp: Date.now(),
+            },
+            () => {
+              if ((chrome.runtime as any).lastError) {
+                console.debug(
+                  '[External Memory] Error sending response to service worker:',
+                  (chrome.runtime as any).lastError
+                );
+              } else {
+                console.debug(
+                  '[External Memory] Response sent to service worker successfully'
+                );
+              }
+            }
+          );
+          break;
+
+        default:
+          // Ignore unknown message types
+          break;
+      }
+    } catch (error) {
+      console.debug('[External Memory] Error processing postMessage:', error);
+    }
+  });
 
   // Send test message to service worker
   try {
